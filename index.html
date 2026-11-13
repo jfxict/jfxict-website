@@ -560,7 +560,7 @@ document.querySelectorAll('.reveal').forEach(e=>observer?observer.observe(e):e.c
 </script>
 
 <script>
-/* Original browser-synthesized ambient soundtrack and sound effects, starting after user interaction. */
+/* User-supplied SOPHIE — VYZEE soundtrack, assembled from local site assets and played after user entry. Site owner is responsible for publication rights. */
 (()=>{
  'use strict';
  const toggle=document.getElementById('jfxSoundToggle');
@@ -569,6 +569,35 @@ document.querySelectorAll('.reveal').forEach(e=>observer?observer.observe(e):e.c
  let ctx=null,master=null,noise=null,entered=false,enabled=true;
  const song=new Audio();song.preload='auto';song.loop=true;song.volume=.58;
  song.src='';
+ let musicLoaded=false, musicLoading=false;
+ let musicPromise=null;
+ const soundPaths=Array.from({length:19},(_,i)=>'media/vyzee_'+String(i).padStart(2,'0')+'.txt');
+ function ensureVYZEE(){
+   if(musicPromise)return musicPromise;
+   musicLoading=true;
+   status.textContent='LOADING VYZEE...';
+   musicPromise=Promise.all(soundPaths.map(async path=>{
+     const res=await fetch(path,{cache:'force-cache'});
+     if(!res.ok)throw new Error('Soundtrack asset failed to load: '+path+' ('+res.status+')');
+     return res.text();
+   })).then(parts=>{
+     const encoded=parts.join('');
+     if(!encoded.startsWith('SUQ')||encoded.length<5000000)throw new Error('Soundtrack incomplete');
+     song.src='data:audio/mpeg;base64,'+encoded;
+     song.loop=true;
+     song.load();
+     musicLoaded=true;musicLoading=false;
+     status.textContent=enabled?'SOPHIE — VYZEE':'MUTED';
+     return true;
+   }).catch(err=>{
+     console.error('VYZEE load failed',err);
+     musicLoading=false;status.textContent='AUDIO LOAD FAILED';
+     return false;
+   });
+   return musicPromise;
+ }
+ // Preload the complete song while the visitor sees the cinematic intro.
+ ensureVYZEE();
  let ambientTimer=null;
  function pauseAmbient(){if(ambientTimer!==null){clearInterval(ambientTimer);ambientTimer=null;}}
  function playAmbient(){if(!ctx||ambientTimer!==null||!enabled)return;
@@ -623,15 +652,28 @@ document.querySelectorAll('.reveal').forEach(e=>observer?observer.observe(e):e.c
   tone(44,t+1.15,.65,.42,'sine',105);tone(880,t+1.32,1.1,.075);
  }
  function clickSound(){if(!enabled||!ctx)return;const t=ctx.currentTime+.005;tone(590,t,.095,.04,'triangle');tone(930,t+.015,.075,.026);}
- function playMusic(){if(!enabled||!entered)return;playAmbient();}
+ function playMusic(){
+   if(!enabled||!entered)return;
+   if(!musicLoaded){
+     ensureVYZEE().then(ok=>{
+       if(!ok||!enabled||!entered)return;
+       const p=song.play();
+       if(p&&p.catch)p.catch(()=>{status.textContent='TAP MUSIC ON TO PLAY';});
+     });
+     return;
+   }
+   song.muted=false;
+   const p=song.play();
+   if(p&&p.catch)p.catch(()=>{status.textContent='TAP MUSIC ON TO PLAY';});
+ }
  function setUI(){toggle.setAttribute('aria-pressed',String(enabled));
   toggle.querySelector('span').textContent=enabled?'MUSIC ON':'MUSIC OFF';
   toggle.querySelector('svg').style.opacity=enabled?'1':'.4';
-  status.textContent=enabled?(entered?'ORIGINAL AMBIENT':'MUSIC STARTS ON ENTER'):'MUTED';
+  status.textContent=enabled?(musicLoading?'LOADING VYZEE...':(entered?'SOPHIE — VYZEE':'MUSIC STARTS ON ENTER')):'MUTED';
  }
  function enter(){entered=true;if(enabled){if(init())ctx.resume().catch(()=>{});buySound();playMusic()}setUI();}
  function skip(){entered=true;if(enabled){if(init())ctx.resume().catch(()=>{});playMusic()}setUI();}
- toggle.addEventListener('click',e=>{e.stopPropagation();enabled=!enabled; if(enabled){if(!entered)entered=true;if(init())ctx.resume().catch(()=>{});playMusic()}else{pauseAmbient();}setUI();});
+ toggle.addEventListener('click',e=>{e.stopPropagation();enabled=!enabled; if(enabled){if(!entered)entered=true;if(init())ctx.resume().catch(()=>{});playMusic()}else{pauseAmbient();song.pause();}setUI();});
  document.addEventListener('click',e=>{if(!entered||!enabled||!ctx||e.target.closest('#jfxAudioControls'))return;
   if(e.target.closest('button,a') && !e.target.closest('#cinemaBuy,#cinemaSkip'))clickSound();
  });
